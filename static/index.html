@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JSON API Facade</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script type="text/javascript">
+
+        function doSubmit() {
+            var institution = $("#institution").val();
+            var repository = $("#repository").val();
+            var url = "/Institutions/" + institution + "/" + repository + "/metadata/jsonCreateMetadataAsJson";
+
+            $("#response").val("Loading...");
+            $.ajax({
+                url: url,
+                method: "POST",
+                data: {
+                    "schema_name": $("#schema_name").val(),
+                    "schema_version": $("#schema_version").val(),
+                    "metadata_json": $("#metadata_json").val(),
+                    "server_url": $("#server_url").val(),
+                    "api_key": $("#api_key").val()
+                },
+                success: function (result) {
+                    $("#response").val(result);
+                },
+                error: function (call, state, msg) {
+                    $("#response").val(msg);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <b>Create Metadata</b>
+    <table>
+        <tr><td>Institution:</td><td><input type="text" id="institution"/></td></tr>
+        <tr><td>Repository:</td><td><input type="text" id="repository"/></td></tr>
+        <tr><td>Schema Name:</td><td><input type="text" id="schema_name" value="DataCite"/></td></tr>
+        <tr><td>Schema Version:</td><td><input type="text" id="schema_version" value="3.1"/></td></tr>
+        <tr><td>Metadata JSON:</td><td>
+            <textarea id="metadata_json" style="width: 800px; height: 400px">SAMPLE_METADATA</textarea>
+        </td></tr>
+        <tr><td>API Key:</td><td><input type="text" id="api_key"/></td></tr>
+        <tr><td>Server URL:</td><td>
+            <input type="text" id="server_url"/>
+            <input type="button" value="Submit" onclick="doSubmit();"/>
+        </td></tr>
+        <tr><td>Response:</td><td><textarea readonly id="response" style="width: 800px; height: 200px"></textarea></td></tr>
+    </table>
+</body>
+</html>

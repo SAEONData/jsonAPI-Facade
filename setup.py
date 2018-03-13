@@ -10,12 +10,11 @@ setup(
     author='Mark Jacobson',
     author_email='mark@saeon.ac.za',
     license='MIT',
-    packages=[],
+    packages=['jsonapi'],
     install_requires=[
         'cherrypy',
         'routes',
-        'requests',
+        'ckanapi',
     ],
-    python_requires='>=3',
-    data_files=[('static', ['static/index.html', 'static/sample_metadata.json'])],
+    python_requires='~=3.5',
 )

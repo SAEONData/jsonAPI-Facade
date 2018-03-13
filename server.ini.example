@@ -1,0 +1,5 @@
+[global]
+; CherryPy server config
+server.socket_port: 9090
+; URL of the CKAN server
+ckan.url: ''

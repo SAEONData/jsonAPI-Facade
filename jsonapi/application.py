@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import cherrypy
-import json
+import re
 
 from jsonapi import CONFIG_FILE, auth
 from ckanapi import RemoteCKAN
@@ -9,31 +9,59 @@ from ckanapi import RemoteCKAN
 class Application:
 
     @staticmethod
-    def _call_ckan(action, apikey, **kwargs):
-        url = cherrypy.config['ckan.url']
-        get_only = action.endswith(('_list', '_show'))
-
-        with RemoteCKAN(url, apikey=apikey, get_only=get_only) as ckan:
-            try:
-                result = ckan.call_action(action, data_dict=kwargs)
-            except Exception as e:
-                result = e.args[0] if len(e.args) == 1 else e.args
-
-        return json.dumps(result, indent=4)
+    def _extract_error(e):
+        """
+        Get the structured error out of the exception, if available; otherwise, get the
+        exception message and remove any HTML error document that might have been returned
+        by CKAN in case of an internal error.
+        """
+        if len(e.args) > 0 and type(e.args[0]) is not str:
+            return e.args[0]
+        else:
+            return re.sub(r"'<!DOCTYPE html .*</html>.*'", "'Server Error'", str(e))
 
     @cherrypy.expose
-    def create_metadata(self, __ac_name, __ac_password, institution, repository,
-                        schema_name, schema_version, metadata_json):
-        apikey = auth.authenticate(__ac_name, __ac_password)
-        return self._call_ckan('metadata_record_create', apikey,
-                               owner_org=institution,
-                               metadata_collection_id=repository,
-                               infrastructures=[],
-                               schema_name=schema_name,
-                               schema_version=schema_version,
-                               content_json=metadata_json,
-                               content_raw='',
-                               content_url='')
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def create_metadata(self, institution, repository):
+        cherrypy.response.headers['Access-Control-Allow-Origin'] = '*'
+        cherrypy.response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        cherrypy.response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+
+        if cherrypy.request.method == 'POST':
+            data = cherrypy.request.json
+            username = data.pop('__ac_name', '')
+            password = data.pop('__ac_password', '')
+            schema_name = data.pop('metadataType', '')
+            metadata_json = data.pop('jsonData', '')
+
+            ckanurl = cherrypy.config['ckan.url']
+            apikey = auth.authenticate(username, password)
+            data_dict = {
+                'owner_org': institution,
+                'metadata_collection_id': repository,
+                'infrastructures': [],
+                'schema_name': schema_name,
+                'schema_version': '',
+                'content_json': metadata_json,
+                'content_raw': '',
+                'content_url': '',
+            }
+            try:
+                with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                    ckanresult = ckan.call_action('metadata_record_create', data_dict)
+                return {
+                    'status': 'success',
+                    'token': ckanresult['name'],
+                    'url': ckanurl + '/api/action/metadata_record_show?id=' + ckanresult['id'],
+                    'uid': ckanresult['id'],
+                    'doi': '',
+                }
+            except Exception as e:
+                return {
+                    'status': 'failed',
+                    'msg': self._extract_error(e),
+                }
 
 
 if __name__ == "__main__":
@@ -44,7 +72,9 @@ if __name__ == "__main__":
         route='/Institutions/{institution}/{repository}/metadata/jsonCreateMetadataAsJson',
         controller=application,
         action='create_metadata',
-        conditions=dict(method=['POST']),
+        conditions=dict(method=['OPTIONS', 'POST']),
     )
     cherrypy.config.update(CONFIG_FILE)
-    cherrypy.quickstart(application, config={'/': {'request.dispatch': dispatcher}})
+    cherrypy.tree.mount(application, '/', config={'/': {'request.dispatch': dispatcher}})
+    cherrypy.engine.start()
+    cherrypy.engine.block()

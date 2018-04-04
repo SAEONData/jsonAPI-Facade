@@ -100,12 +100,18 @@ class Application:
         if types != 'Institution':
             return {
                 'status': 'failed',
-                'msg': "Missing parameter 'types'",
+                'msg': 'Expecting param types=Institution',
             }
 
         try:
             with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
-                return ckan.call_action('organization_list', data_dict={'all_fields': True})
+                ckanresult = ckan.call_action('organization_list', data_dict={'all_fields': True})
+
+            for org_dict in ckanresult:
+                org_dict['context_path'] = cherrypy.request.wsgi_environ['wsgi.url_scheme'] + '://' + \
+                                           cherrypy.request.wsgi_environ['HTTP_HOST'] + \
+                                           '/Institutions/' + org_dict['name']
+            return ckanresult
 
         except Exception as e:
             return {

@@ -39,13 +39,17 @@ class Application:
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
-    def create_metadata(self, institution, repository):
+    def create_metadata(self, institution, repository, **kwargs):
         self._set_response_headers()
-        if cherrypy.request.method != 'POST':
+        if cherrypy.request.method == 'OPTIONS':
             return
 
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
         ckanurl = cherrypy.config['ckan.url']
-        data = cherrypy.request.json
         apikey = self._authenticate(data)
 
         schema_name = data.pop('metadataType', '')
@@ -79,13 +83,17 @@ class Application:
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
-    def list_institutions(self):
+    def list_institutions(self, **kwargs):
         self._set_response_headers()
-        if cherrypy.request.method != 'POST':
+        if cherrypy.request.method == 'OPTIONS':
             return
 
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
         ckanurl = cherrypy.config['ckan.url']
-        data = cherrypy.request.json
         apikey = self._authenticate(data)
 
         types = data.pop('types', '')
@@ -121,7 +129,7 @@ if __name__ == "__main__":
         route='/Institutions/jsonContent',
         controller=application,
         action='list_institutions',
-        conditions=dict(method=['OPTIONS', 'POST']),
+        conditions=dict(method=['OPTIONS', 'POST', 'GET']),
     )
     cherrypy.config.update(CONFIG_FILE)
     cherrypy.tree.mount(application, '/', config={'/': {'request.dispatch': dispatcher}})

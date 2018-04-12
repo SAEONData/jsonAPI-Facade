@@ -37,7 +37,7 @@ class Application:
             return re.sub(r"'<!DOCTYPE html .*</html>.*'", "'Server Error'", str(e))
 
     @cherrypy.expose
-    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_in(force=False)  # allow content types other than 'application/json'
     @cherrypy.tools.json_out()
     def create_metadata(self, institution, repository, **kwargs):
         self._set_response_headers()
@@ -54,6 +54,15 @@ class Application:
 
         schema_name = data.pop('metadataType', '')
         metadata_json = data.pop('jsonData', '')
+
+        # Hack for the portal to work with this service:
+        # Requests from the portal to create metadata always have institution==repository.
+        # But in CKAN, repositories cannot have the same name as their owning institutions,
+        # as both are Group type objects. We assume that for an institution and repository
+        # named 'foo' in Plone, the corresponding repository (metadata collection) in CKAN
+        # would be named 'foo-repository'.
+        if institution == repository:
+            repository += '-repository'
 
         try:
             with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
@@ -119,6 +128,82 @@ class Application:
                 'msg': self._extract_error(e),
             }
 
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def list_users(self, **kwargs):
+        self._set_response_headers()
+        if cherrypy.request.method == 'OPTIONS':
+            return
+
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
+        ckanurl = cherrypy.config['ckan.url']
+        apikey = self._authenticate(data)
+
+        users = data.pop('user_id', [])
+        if users:
+            users = users.split('|')
+
+        try:
+            with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                ckanresult = ckan.call_action('user_list', data_dict={'all_fields': True})
+                if users:
+                    ckanresult = [user_dict for user_dict in ckanresult
+                                  if user_dict['name'] in users]
+                return ckanresult
+
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'msg': self._extract_error(e),
+            }
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def get_user(self, username, **kwargs):
+        self._set_response_headers()
+        if cherrypy.request.method == 'OPTIONS':
+            return
+
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
+        ckanurl = cherrypy.config['ckan.url']
+        apikey = self._authenticate(data)
+
+        try:
+            with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                return ckan.call_action('user_show', data_dict={'id': username})
+
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'msg': self._extract_error(e),
+            }
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def json_content_generic(self, **kwargs):
+        self._set_response_headers()
+        if cherrypy.request.method == 'OPTIONS':
+            return
+
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
+        if data.get('types') == 'Institution':
+            return self.list_institutions(**kwargs)
+
 
 if __name__ == "__main__":
     application = Application()
@@ -135,6 +220,27 @@ if __name__ == "__main__":
         route='/Institutions/jsonContent',
         controller=application,
         action='list_institutions',
+        conditions=dict(method=['OPTIONS', 'POST', 'GET']),
+    )
+    dispatcher.connect(
+        name='list-users',
+        route='/jsonUser',
+        controller=application,
+        action='list_users',
+        conditions=dict(method=['OPTIONS', 'POST', 'GET']),
+    )
+    dispatcher.connect(
+        name='get-user',
+        route='/Members/{username}/jsonContent',
+        controller=application,
+        action='get_user',
+        conditions=dict(method=['OPTIONS', 'POST', 'GET']),
+    )
+    dispatcher.connect(
+        name='json-content-generic',
+        route='/jsonContent',
+        controller=application,
+        action='json_content_generic',
         conditions=dict(method=['OPTIONS', 'POST', 'GET']),
     )
     cherrypy.config.update(CONFIG_FILE)

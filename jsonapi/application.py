@@ -36,6 +36,10 @@ class Application:
         else:
             return re.sub(r"'<!DOCTYPE html .*</html>.*'", "'Server Error'", str(e))
 
+    @staticmethod
+    def _generate_name(text):
+        return re.sub('[^a-z0-9_\-]+', '-', text.lower())
+
     @cherrypy.expose
     @cherrypy.tools.json_in(force=False)  # allow content types other than 'application/json'
     @cherrypy.tools.json_out()
@@ -82,6 +86,41 @@ class Application:
                 'url': ckanurl + '/api/action/metadata_record_show?id=' + ckanresult['id'],
                 'uid': ckanresult['id'],
                 'doi': '',
+            }
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'msg': self._extract_error(e),
+            }
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in(force=False)  # allow content types other than 'application/json'
+    @cherrypy.tools.json_out()
+    def create_institution(self, **kwargs):
+        self._set_response_headers()
+        if cherrypy.request.method == 'OPTIONS':
+            return
+
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
+        ckanurl = cherrypy.config['ckan.url']
+        apikey = self._authenticate(data)
+
+        title = data.pop('title', '')
+        name = self._generate_name(title)
+
+        try:
+            with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                ckanresult = ckan.call_action('organization_create', data_dict={
+                    'name': name,
+                    'title': title,
+                })
+            return {
+                'status': 'success',
+                'url': ckanurl + '/api/action/organization_show?id=' + ckanresult['id'],
             }
         except Exception as e:
             return {
@@ -213,6 +252,13 @@ if __name__ == "__main__":
         route='/Institutions/{institution}/{repository}/metadata/jsonCreateMetadataAsJson',
         controller=application,
         action='create_metadata',
+        conditions=dict(method=['OPTIONS', 'POST']),
+    )
+    dispatcher.connect(
+        name='create-institution',
+        route='/Institutions/jsonCreateInstitution',
+        controller=application,
+        action='create_institution',
         conditions=dict(method=['OPTIONS', 'POST']),
     )
     dispatcher.connect(

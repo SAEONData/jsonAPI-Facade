@@ -72,9 +72,9 @@ class Application:
                     'infrastructures': [],
                     'schema_name': schema_name,
                     'schema_version': '',
-                    'content_json': metadata_json,
-                    'content_raw': '',
-                    'content_url': '',
+                    'metadata_json': metadata_json,
+                    'metadata_raw': '',
+                    'metadata_url': '',
                 })
             return {
                 'status': 'success',

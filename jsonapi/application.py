@@ -56,7 +56,7 @@ class Application:
         ckanurl = cherrypy.config['ckan.url']
         apikey = self._authenticate(data)
 
-        schema_name = data.pop('metadataType', '')
+        metadata_schema = data.pop('metadataType', '')
         metadata_json = data.pop('jsonData', '')
 
         # Hack for the portal to work with this service:
@@ -74,8 +74,7 @@ class Application:
                     'owner_org': institution,
                     'metadata_collection_id': repository,
                     'infrastructures': [],
-                    'schema_name': schema_name,
-                    'schema_version': '',
+                    'metadata_schema_id': metadata_schema,
                     'metadata_json': metadata_json,
                     'metadata_raw': '',
                     'metadata_url': '',

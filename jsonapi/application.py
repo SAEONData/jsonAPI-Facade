@@ -93,6 +93,49 @@ class Application:
             }
 
     @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def get_metadata(self, institution, repository, **kwargs):
+        self._set_response_headers()
+        if cherrypy.request.method == 'OPTIONS':
+            return
+
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
+        ckanurl = cherrypy.config['ckan.url']
+        apikey = self._authenticate(data)
+
+        types = data.pop('types', '')
+        if types != 'Metadata':
+            return {
+                'status': 'failed',
+                'msg': 'Expecting param types=Metadata',
+            }
+
+        try:
+            with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                ckanresult = ckan.call_action('metadata_record_list', data_dict={
+                    'owner_org': institution,
+                    'metadata_collection_id': repository,
+                    'all_fields': True,
+                })
+
+            for org_dict in ckanresult:
+                org_dict['context_path'] = cherrypy.request.wsgi_environ['wsgi.url_scheme'] + '://' + \
+                                           cherrypy.request.wsgi_environ['HTTP_HOST'] + \
+                                           '/Institutions/' + org_dict['name']
+            return ckanresult
+
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'msg': self._extract_error(e),
+            }
+
+    @cherrypy.expose
     @cherrypy.tools.json_in(force=False)  # allow content types other than 'application/json'
     @cherrypy.tools.json_out()
     def create_institution(self, **kwargs):
@@ -252,6 +295,13 @@ if __name__ == "__main__":
         controller=application,
         action='create_metadata',
         conditions=dict(method=['OPTIONS', 'POST']),
+    )
+    dispatcher.connect(
+        name='get-metadata',
+        route='/Institutions/{institution}/{repository}/metadata/jsonContent',
+        controller=application,
+        action='get_metadata',
+        conditions=dict(method=['OPTIONS', 'POST', 'GET']),
     )
     dispatcher.connect(
         name='create-institution',

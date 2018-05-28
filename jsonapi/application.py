@@ -59,7 +59,7 @@ class Application:
         metadata_schema = data.pop('metadataType', '')
         metadata_json = data.pop('jsonData', '')
 
-        # Hack for the portal to work with this service:
+        # For compatibility with the legacy portal:
         # Requests from the portal to create metadata always have institution==repository.
         # But in CKAN, repositories cannot have the same name as their owning institutions,
         # as both are Group type objects. We assume that for an institution and repository
@@ -115,6 +115,10 @@ class Application:
                 'msg': 'Expecting param types=Metadata',
             }
 
+        # For compatibility with the legacy portal (see comment in create_metadata)
+        if institution == repository:
+            repository += '-repository'
+
         try:
             with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
                 ckanresult = ckan.call_action('metadata_record_list', data_dict={
@@ -160,10 +164,27 @@ class Application:
                     'name': name,
                     'title': title,
                 })
+
+                # create a default repository (in the legacy JSON API, this would be named
+                # identically to the institution; see comment in create_metadata)
+                try:
+                    ckan.call_action('metadata_collection_create', data_dict={
+                        'name': name + '-repository',
+                        'title': title + ' Repository',
+                        'organization_id': ckanresult['id'],
+                    })
+                except:
+                    try:
+                        ckan.call_action('organization_delete', data_dict={'id': ckanresult['id']})
+                    except:
+                        pass
+                    raise
+
             return {
                 'status': 'success',
                 'url': ckanurl + '/api/action/organization_show?id=' + ckanresult['id'],
             }
+
         except Exception as e:
             return {
                 'status': 'failed',

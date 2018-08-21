@@ -56,7 +56,7 @@ class Application:
         ckanurl = cherrypy.config['ckan.url']
         apikey = self._authenticate(data)
 
-        metadata_schema = data.pop('metadataType', '')
+        metadata_standard = data.pop('metadataType', '')
         metadata_json = data.pop('jsonData', '')
 
         # For compatibility with the legacy portal:
@@ -74,7 +74,7 @@ class Application:
                     'owner_org': institution,
                     'metadata_collection_id': repository,
                     'infrastructures': [],
-                    'metadata_schema_id': metadata_schema,
+                    'metadata_standard_id': metadata_standard,
                     'metadata_json': metadata_json,
                     'metadata_raw': '',
                     'metadata_url': '',

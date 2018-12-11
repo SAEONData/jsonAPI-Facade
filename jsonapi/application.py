@@ -58,6 +58,7 @@ class Application:
 
         metadata_standard = data.pop('metadataType', '')
         metadata_json = data.pop('jsonData', '')
+        workflow_state = data.pop('workflowState', '')
 
         # For compatibility with the legacy portal:
         # Requests from the portal to create metadata always have institution==repository.
@@ -76,10 +77,8 @@ class Application:
                     'infrastructures': [],
                     'metadata_standard_id': metadata_standard,
                     'metadata_json': metadata_json,
-                    'metadata_raw': '',
-                    'metadata_url': '',
                 })
-            return {
+            result = {
                 'status': 'success',
                 'token': ckanresult['name'],
                 'url': ckanurl + '/api/action/metadata_record_show?id=' + ckanresult['id'],
@@ -91,6 +90,21 @@ class Application:
                 'status': 'failed',
                 'msg': self._extract_error(e),
             }
+
+        if workflow_state:
+            try:
+                with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                    ckan.call_action('metadata_record_workflow_state_override', data_dict={
+                        'id': ckanresult['id'],
+                        'workflow_state_id': workflow_state,
+                    })
+                result['workflow_status'] = 'success'
+                result['workflow_state'] = workflow_state
+            except Exception as e:
+                result['workflow_status'] = 'failed'
+                result['workflow_msg'] = self._extract_error(e)
+
+        return result
 
     @cherrypy.expose
     @cherrypy.tools.json_in()

@@ -139,6 +139,7 @@ class Application:
                     'owner_org': institution,
                     'metadata_collection_id': repository,
                     'all_fields': True,
+                    'deserialize_json': True,
                 })
 
             for org_dict in ckanresult:

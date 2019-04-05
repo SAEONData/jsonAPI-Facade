@@ -44,6 +44,30 @@ class Application:
     @cherrypy.tools.json_in(force=False)  # allow content types other than 'application/json'
     @cherrypy.tools.json_out()
     def create_metadata(self, institution, repository, **kwargs):
+
+        def transition_record(metadata_record_id, workflow_state_id):
+            try:
+                with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                    workflow_result = ckan.call_action('metadata_record_workflow_state_transition', data_dict={
+                        'id': metadata_record_id,
+                        'workflow_state_id': workflow_state_id,
+                    })
+                workflow_errors = workflow_result['data']['errors']
+                if workflow_errors:
+                    return {
+                        'workflow_status': 'failed',
+                        'workflow_msg': workflow_errors,
+                    }
+                return {
+                    'workflow_status': 'success',
+                    'workflow_state': workflow_state_id,
+                }
+            except Exception as e:
+                return {
+                    'workflow_status': 'failed',
+                    'workflow_msg': self._extract_error(e),
+                }
+
         self._set_response_headers()
         if cherrypy.request.method == 'OPTIONS':
             return
@@ -56,9 +80,10 @@ class Application:
         ckanurl = cherrypy.config['ckan.url']
         apikey = self._authenticate(data)
 
-        metadata_standard = data.pop('metadataType', '')
+        metadata_standard_id = data.pop('metadataType', '')
         metadata_json = data.pop('jsonData', '')
-        workflow_state = data.pop('workflowState', '')
+        target_workflow_state_id = data.pop('targetWorkflowState', '')
+        fallback_workflow_state_id = data.pop('fallbackWorkflowState', '')
 
         # For compatibility with the legacy portal:
         # Requests from the portal to create metadata always have institution==repository.
@@ -71,38 +96,43 @@ class Application:
 
         try:
             with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
-                ckanresult = ckan.call_action('metadata_record_create', data_dict={
+                create_result = ckan.call_action('metadata_record_create', data_dict={
                     'owner_org': institution,
                     'metadata_collection_id': repository,
                     'infrastructures': [],
-                    'metadata_standard_id': metadata_standard,
+                    'metadata_standard_id': metadata_standard_id,
                     'metadata_json': metadata_json,
                 })
             result = {
                 'status': 'success',
-                'token': ckanresult['name'],
-                'url': ckanurl + '/api/action/metadata_record_show?id=' + ckanresult['id'],
-                'uid': ckanresult['id'],
+                'token': create_result['name'],
+                'url': ckanurl + '/api/action/metadata_record_show?id=' + create_result['id'],
+                'uid': create_result['id'],
                 'doi': '',
             }
+
+            try:
+                with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                    validate_result = ckan.call_action('metadata_record_validate', data_dict={
+                        'id': create_result['id'],
+                    })
+                result['validate_status'] = 'success'
+                result['validate_result'] = validate_result['data']['results']  # this is a list of dicts with keys 'metadata_schema_id' and 'errors'
+            except Exception as e:
+                result['validate_status'] = 'failed'
+                result['validate_msg'] = self._extract_error(e)
+
         except Exception as e:
             return {
                 'status': 'failed',
                 'msg': self._extract_error(e),
             }
 
-        if workflow_state:
-            try:
-                with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
-                    ckan.call_action('metadata_record_workflow_state_override', data_dict={
-                        'id': ckanresult['id'],
-                        'workflow_state_id': workflow_state,
-                    })
-                result['workflow_status'] = 'success'
-                result['workflow_state'] = workflow_state
-            except Exception as e:
-                result['workflow_status'] = 'failed'
-                result['workflow_msg'] = self._extract_error(e)
+        if target_workflow_state_id:
+            workflow_result = transition_record(create_result['id'], target_workflow_state_id)
+            if workflow_result['workflow_status'] == 'failed' and fallback_workflow_state_id:
+                workflow_result = transition_record(create_result['id'], fallback_workflow_state_id)
+            result.update(workflow_result)
 
         return result
 

@@ -31,10 +31,13 @@ class Application:
         exception message and remove any HTML error document that might have been returned
         by CKAN in case of an internal error.
         """
-        if len(e.args) > 0 and type(e.args[0]) is not str:
-            return e.args[0]
-        else:
-            return re.sub(r"'<!DOCTYPE html .*</html>.*'", "'Server Error'", str(e))
+        try:
+            if len(e.args) > 0 and type(e.args[0]) is not str:
+                return e.args[0]
+            else:
+                return re.sub(r"'<!DOCTYPE html .*</html>.*'", "'Server Error'", str(e))
+        except:
+            return str(e)
 
     @staticmethod
     def _generate_name(text):

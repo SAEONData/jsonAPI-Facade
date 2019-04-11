@@ -45,29 +45,6 @@ class Application:
     @cherrypy.tools.json_out()
     def create_metadata(self, institution, repository, **kwargs):
 
-        def transition_record(metadata_record_id, workflow_state_id):
-            try:
-                with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
-                    workflow_result = ckan.call_action('metadata_record_workflow_state_transition', data_dict={
-                        'id': metadata_record_id,
-                        'workflow_state_id': workflow_state_id,
-                    })
-                workflow_errors = workflow_result['data']['errors']
-                if workflow_errors:
-                    return {
-                        'workflow_status': 'failed',
-                        'workflow_msg': workflow_errors,
-                    }
-                return {
-                    'workflow_status': 'success',
-                    'workflow_state': workflow_state_id,
-                }
-            except Exception as e:
-                return {
-                    'workflow_status': 'failed',
-                    'workflow_msg': self._extract_error(e),
-                }
-
         self._set_response_headers()
         if cherrypy.request.method == 'OPTIONS':
             return
@@ -82,8 +59,6 @@ class Application:
 
         metadata_standard_id = data.pop('metadataType', '')
         metadata_json = data.pop('jsonData', '')
-        target_workflow_state_id = data.pop('targetWorkflowState', '')
-        fallback_workflow_state_id = data.pop('fallbackWorkflowState', '')
 
         # For compatibility with the legacy portal:
         # Requests from the portal to create metadata always have institution==repository.
@@ -128,13 +103,48 @@ class Application:
                 'msg': self._extract_error(e),
             }
 
-        if target_workflow_state_id:
-            workflow_result = transition_record(create_result['id'], target_workflow_state_id)
-            if workflow_result['workflow_status'] == 'failed' and fallback_workflow_state_id:
-                workflow_result = transition_record(create_result['id'], fallback_workflow_state_id)
-            result.update(workflow_result)
-
         return result
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def set_workflow_state(self, **kwargs):
+        self._set_response_headers()
+        if cherrypy.request.method == 'OPTIONS':
+            return
+
+        try:
+            data = cherrypy.request.json
+        except AttributeError:
+            data = kwargs
+
+        ckanurl = cherrypy.config['ckan.url']
+        apikey = self._authenticate(data)
+
+        metadata_record_id = data.pop('recordId', '')
+        workflow_state_id = data.pop('workflowState', '')
+
+        try:
+            with RemoteCKAN(ckanurl, apikey=apikey) as ckan:
+                workflow_result = ckan.call_action('metadata_record_workflow_state_transition', data_dict={
+                    'id': metadata_record_id,
+                    'workflow_state_id': workflow_state_id,
+                })
+            workflow_errors = workflow_result['data']['errors']
+            if workflow_errors:
+                return {
+                    'status': 'failed',
+                    'msg': workflow_errors,
+                }
+            return {
+                'status': 'success',
+                'state': workflow_state_id,
+            }
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'msg': self._extract_error(e),
+            }
 
     @cherrypy.expose
     @cherrypy.tools.json_in()
@@ -368,6 +378,13 @@ if __name__ == "__main__":
         controller=application,
         action='get_metadata',
         conditions=dict(method=['OPTIONS', 'POST', 'GET']),
+    )
+    dispatcher.connect(
+        name='set-workflow-state',
+        route='/setWorkflowState',
+        controller=application,
+        action='set_workflow_state',
+        conditions=dict(method=['OPTIONS', 'POST']),
     )
     dispatcher.connect(
         name='create-institution',

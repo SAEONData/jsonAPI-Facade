@@ -94,12 +94,9 @@ class Application:
                     validate_result = ckan.call_action('metadata_record_validate', data_dict={
                         'id': create_result['id'],
                     })
-                result['validate_status'] = 'success'
-                # if this was an update and the record had already been validated, then validate_result will be None
-                if validate_result:
-                    result['validate_result'] = validate_result['data']['results']  # this is a list of dicts with keys 'metadata_schema_id' and 'errors'
-                else:
-                    result['validate_result'] = 'already validated'
+                result['validate_result'] = validate_result['data']['results']  # this is a list of dicts with keys 'metadata_schema_id' and 'errors'
+                errors = any((x for x in result['validate_result'] if x['errors']))
+                result['validate_status'] = 'failed' if errors else 'success'
 
             except Exception as e:
                 result['validate_status'] = 'failed'

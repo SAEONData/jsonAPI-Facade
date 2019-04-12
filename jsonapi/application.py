@@ -111,7 +111,7 @@ class Application:
         return result
 
     @cherrypy.expose
-    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_in(force=False)
     @cherrypy.tools.json_out()
     def set_workflow_state(self, **kwargs):
         self._set_response_headers()
